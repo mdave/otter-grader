@@ -32,6 +32,19 @@ class EventType(Enum):
     TO_PDF = auto()
 
 
+class ShelvedQuestion:
+    def __init__(self, question, shelf_files, unshelved):
+        self.question = question
+        self.shelf_files = shelf_files
+        self.unshelved = unshelved
+
+    def __iter__(self):
+        return self.shelf_files.keys()
+
+    def __getitem__(self, key):
+        return self.shelf_files[key]
+
+
 class LogEntry:
     """An entry in Otter's log. Tracks event type, grading results, success of operation, and errors
     thrown.
@@ -117,7 +130,8 @@ class Log:
     def __init__(self, entries, ascending=True):
         self.entries = entries
         self.ascending = ascending
-        self.shelves = {}       # maps question names to shelves, stored as ({str: bytes}, list)
+        # self.shelves = {}       # maps question names to shelves, stored as ({str: bytes}, list)
+        self.shelved_questions = []
 
     def __repr__(self):
         return "otter.logs.Log([\n  {}\n])".format(",\n  ".join([repr(e) for e in self.entries]))
@@ -136,10 +150,17 @@ class Log:
 
     def shelve_question(self, question, env):
         shelf_files, unshelved = Log.shelve_environment(env)
-        self.shelves[question] = (shelf_files, unshelved)
+        
+        with open(_SHELF_FILENAME + "_" + question, "wb+") as f:
+            pickle.dump(ShelvedQuestion(question, shelf_files, unshelved), f)
+
+        self.shelved_questions.append(question)
         
     def unshelve_question(self, question):
-        shelf = self.shelves[question][0]
+        filename = _SHELF_FILENAME + "_" + question
+        with open(filename, "rb") as f:
+            shelf = pickle.load(f)
+
         for ext in shelf:
             with open(_SHELF_FILENAME + ext, "wb+") as f:
                 f.write(shelf[ext])
@@ -182,9 +203,6 @@ class Log:
                 return pickle.load(f)
         except FileNotFoundError:
             return cls([])
-
-    def question_environments(self):
-        return self.shelves.items()
 
     def get_question_entry(self, question):
         if self.ascending:

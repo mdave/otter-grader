@@ -19,7 +19,7 @@ from IPython.display import display, HTML, Javascript
 
 from .execute import check
 from .export import export_notebook
-from .logs import Log, EventType
+from .logs import Log, EventType, _SHELF_FILENAME
 
 
 _API_KEY = None
@@ -286,6 +286,10 @@ class Notebook:
 
 			if os.path.isfile(_OTTER_LOG_FILENAME):
 				zf.write(_OTTER_LOG_FILENAME)
+
+			if _SHELVE:
+				for shelf_file in glob(_SHELF_FILENAME + "_*"):
+					zf.write(shelf_file)
 
 			if glob("*.otter"):
 				assert len(glob("*.otter")) == 1, "Too many .otter files (max 1 allowed)"

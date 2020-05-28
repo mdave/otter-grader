@@ -3,6 +3,7 @@
 ####################################
 
 import re
+import os
 import pickle
 import shelve
 import datetime as dt
@@ -229,6 +230,8 @@ class Log:
 
     @staticmethod
     def shelve_environment(env):
+        if glob(_SHELF_FILENAME + ".*"):
+            os.system(f"rm -f {_SHELF_FILENAME}.*")
         unshelved = []
         with shelve.open(_SHELF_FILENAME) as shelf:
             for k, v in env.items():

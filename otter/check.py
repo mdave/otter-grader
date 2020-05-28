@@ -8,7 +8,7 @@ from glob import glob
 from jinja2 import Template
 
 from .execute import grade_notebook, check
-from .logs import LogEntry, EventType
+from .logs import Log, EventType
 from .notebook import _OTTER_LOG_FILENAME
 from .utils import block_print
 
@@ -24,66 +24,73 @@ Tests failed:
 """)
 
 def _log_event(event_type, results=[], question=None, success=True, error=None):
-	"""Logs an event
+    """Logs an event
 
-	Args:
-		event_type (``otter.logs.EventType``): the type of event
-		results (``list`` of ``otter.ok_parser.OKTestsResult``, optional): the results of any checks
-			recorded by the entry
-		question (``str``, optional): the question name for this check
-		success (``bool``, optional): whether the operation was successful
-		error (``Exception``, optional): the exception thrown by the operation, if applicable
-	"""
-	LogEntry(
-		event_type,
-		results=results,
-		question=question, 
-		success=success, 
-		error=error
-	).flush_to_file(_OTTER_LOG_FILENAME)
+    Args:
+        event_type (``otter.logs.EventType``): the type of event
+        results (``list`` of ``otter.ok_parser.OKTestsResult``, optional): the results of any checks
+            recorded by the entry
+        question (``str``, optional): the question name for this check
+        success (``bool``, optional): whether the operation was successful
+        error (``Exception``, optional): the exception thrown by the operation, if applicable
+    """
+    log = Log.from_file(_OTTER_LOG_FILENAME)
+    
+    log.add_entry(
+        event_type,
+        results=results,
+        question=question, 
+        success=success, 
+        error=error
+    )
+
+    # if _SHELVE and event_type == EventType.CHECK:
+    # 	self._log.shelve_question(question, shelve_env)
+
+    log.to_file(_OTTER_LOG_FILENAME)
 
 def main(args):
-	"""Runs Otter Check
+    """Runs Otter Check
 
-	Args:
-		args (``argparse.Namespace``): parsed command line arguments
-	"""
+    Args:
+        args (``argparse.Namespace``): parsed command line arguments
+    """
 
-	try:
-		if args.question:
-			test_path = os.path.join(args.tests_path, args.question + ".py")
-			assert os.path.isfile(test_path), "Test {} does not exist".format(args.question)
-			qs = [test_path]
-		else:
-			qs = glob(os.path.join(args.tests_path, "*.py"))
+    try:
+        if args.question:
+            test_path = os.path.join(args.tests_path, args.question + ".py")
+            assert os.path.isfile(test_path), "Test {} does not exist".format(args.question)
+            qs = [test_path]
+        else:
+            qs = glob(os.path.join(args.tests_path, "*.py"))
 
-		assert os.path.isfile(args.file), "{} is not a file".format(args.file)
-		assert args.file[-6:] == ".ipynb" or args.file[-3:] == ".py", "{} is not a Jupyter Notebook or Python file".format(args.file)
+        assert os.path.isfile(args.file), "{} is not a file".format(args.file)
+        assert args.file[-6:] == ".ipynb" or args.file[-3:] == ".py", "{} is not a Jupyter Notebook or Python file".format(args.file)
 
-		script = args.file[-3:] == ".py"
+        script = args.file[-3:] == ".py"
 
-		with block_print():
-			results = grade_notebook(
-				args.file,
-				tests_glob=qs,
-				script=script,
-				seed=args.seed
-			)
+        with block_print():
+            results = grade_notebook(
+                args.file,
+                tests_glob=qs,
+                script=script,
+                seed=args.seed
+            )
 
-		passed_tests = [test for test in results if test not in ["possible", "total"] and "hint" not in results[test]]
-		failed_tests = [results[test]["hint"] for test in results if test not in ["possible", "total"] and "hint" in results[test]]
+        passed_tests = [test for test in results if test not in ["possible", "total"] and "hint" not in results[test]]
+        failed_tests = [results[test]["hint"] for test in results if test not in ["possible", "total"] and "hint" in results[test]]
 
-		output = RESULT_TEMPLATE.render(
-			grade=results["total"] / results["possible"],
-			passed_tests=passed_tests,
-			failed_tests=failed_tests,
-			scores=results
-		)
+        output = RESULT_TEMPLATE.render(
+            grade=results["total"] / results["possible"],
+            passed_tests=passed_tests,
+            failed_tests=failed_tests,
+            scores=results
+        )
 
-		print(output)
+        print(output)
 
-	except Exception as e:
-		_log_event(EventType.CHECK, success=False, error=e)
-			
-	else:
-		_log_event(EventType.CHECK, results=results)
+    except Exception as e:
+        _log_event(EventType.CHECK, success=False, error=e)
+            
+    else:
+        _log_event(EventType.CHECK, results=results)

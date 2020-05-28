@@ -150,6 +150,8 @@ class Log:
         self.entries.append(entry)
 
     def shelve_question(self, question, env):
+        if os.path.isfile(_SHELF_FILENAME + "_" + question):
+            os.system(f"rm -f {_SHELF_FILENAME + '_' + question}")
         shelf_files, unshelved = Log.shelve_environment(env)
         
         with open(_SHELF_FILENAME + "_" + question, "wb+") as f:

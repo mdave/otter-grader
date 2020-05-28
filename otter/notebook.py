@@ -19,7 +19,7 @@ from IPython.display import display, HTML, Javascript
 
 from .execute import check
 from .export import export_notebook
-from .logs import LogEntry, EventType
+from .logs import Log, EventType
 
 
 _API_KEY = None
@@ -41,6 +41,7 @@ class Notebook:
 			# assert os.path.isdir(test_dir), "{} is not a directory".format(test_dir)
 			
 			self._path = test_dir
+			self._log = Log.from_file(_OTTER_LOG_FILENAME)
 			self._service_enabled = False
 			self._notebook = None
 			
@@ -143,7 +144,7 @@ class Notebook:
 			success (``bool``, optional): whether the operation was successful
 			error (``Exception``, optional): the exception thrown by the operation, if applicable
 		"""
-		entry = LogEntry(
+		self._log.add_entry(
 			event_type,
 			results=results,
 			question=question, 
@@ -152,9 +153,9 @@ class Notebook:
 		)
 
 		if _SHELVE and event_type == EventType.CHECK:
-			entry.shelve(shelve_env)
+			self._log.shelve_question(question, shelve_env)
 
-		entry.flush_to_file(_OTTER_LOG_FILENAME)
+		self._log.to_file(_OTTER_LOG_FILENAME)
 
 
 	def check(self, question, global_env=None, shelve_env=True):

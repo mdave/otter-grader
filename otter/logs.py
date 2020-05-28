@@ -86,35 +86,6 @@ class LogEntry:
         """
         if self.error is not None:
             raise self.error
-        # raise ValueError("No error is stored in this log entry")
-
-    def flush_to_file(self, filename):
-        """Appends this log entry (pickled) to a file
-        
-        Args:
-            filename (``str``): the path to the file to append this entry
-        """
-        try:
-            file = open(filename, "ab+")
-            pickle.dump(self, file)
-
-        finally:
-            file.close()
-
-    def shelve(self, env):
-        shelf_files, unshelved = LogEntry.shelve_environment(env)
-        self.shelf = shelf_files
-        self.unshelved = unshelved
-        return self
-        
-    def unshelve(self):
-        assert self.shelf, "no shelf in this entry"
-        for ext in self.shelf:
-            with open(_SHELF_FILENAME + ext, "wb+") as f:
-                f.write(self.shelf[ext])
-        
-        shelf = shelve.open(_SHELF_FILENAME)
-        return shelf
 
     @staticmethod
     def sort_log(log, ascending=True):
@@ -132,57 +103,10 @@ class LogEntry:
             return list(sorted(log, key = lambda l: l.timestamp))
         return list(sorted(log, key = lambda l: l.timestamp, reverse = True))
 
-    @staticmethod
-    def log_from_file(filename, ascending=True):
-        """Reads a log file and returns a sorted list of the log entries pickled in that file
-        
-        Args:
-            filename (``str``): the path to the log
-            ascending (``bool``, optional): whether the log should be sorted in ascending (chronological) 
-                order; default ``True``
 
-        Returns:
-            ``list`` of ``otter.logs.LogEntry``: the sorted log
-        """
-        try:
-            file = open(filename, "rb")
-
-            log = []
-            while True:
-                try:
-                    log.append(pickle.load(file))
-                except EOFError:
-                    break
-
-            log = list(sorted(log, key = lambda l: l.timestamp, reverse = not ascending))
-            
-            return log
-            
-        finally:
-            file.close()
-
-    @staticmethod
-    def shelve_environment(env):
-        unshelved = []
-        with shelve.open(_SHELF_FILENAME) as shelf:
-            for k, v in env.items():
-                try:
-                    shelf[k] = v
-                except:
-                    unshelved.append(k)
-        
-        shelf_files = {}
-        for file in glob(_SHELF_FILENAME + "*"):
-            ext = re.sub(_SHELF_FILENAME, "", file)
-            f = open(file, "rb")
-            shelf_files[ext] = f.read()
-            f.close()
-            
-        return shelf_files, unshelved
-
-
+# TODO: update docstring
 class Log:
-    """A class for reading and interacting with a log. *Does not support editing the log file.*
+    """A class for reading and interacting with a log
 
     Args:
         entries (``list`` of ``otter.logs.LogEntry``): the list of entries for this log
@@ -193,6 +117,7 @@ class Log:
     def __init__(self, entries, ascending=True):
         self.entries = entries
         self.ascending = ascending
+        self.shelves = {}       # maps question names to shelves, stored as ({str: bytes}, list)
 
     def __repr__(self):
         return "otter.logs.Log([\n  {}\n])".format(",\n  ".join([repr(e) for e in self.entries]))
@@ -203,8 +128,34 @@ class Log:
     def __iter__(self):
         return iter(self.entries)
 
-    def question_iterator(self):
-        return QuestionLogIterator(self)
+    def add_entry(self, event_type, results=[], question=None, success=True, error=None):
+        if not self.ascending:
+            self.sort()
+        entry = LogEntry(event_type, results=results, question=question, success=success, error=error)
+        self.entries.append(entry)
+
+    def shelve_question(self, question, env):
+        shelf_files, unshelved = Log.shelve_environment(env)
+        self.shelves[question] = (shelf_files, unshelved)
+        
+    def unshelve_question(self, question):
+        shelf = self.shelves[question][0]
+        for ext in shelf:
+            with open(_SHELF_FILENAME + ext, "wb+") as f:
+                f.write(shelf[ext])
+        
+        shelf = shelve.open(_SHELF_FILENAME)
+        return shelf
+
+    # TODO: update docstring
+    def to_file(self, filename):
+        """Appends this log entry (pickled) to a file 
+        
+        Args:
+            filename (``str``): the path to the file to append this entry
+        """
+        with open(filename, "wb+") as f:
+            pickle.dump(self, f)
 
     def sort(self, ascending=True):
         self.entries = LogEntry.sort_log(self.entries, ascending=ascending)
@@ -215,7 +166,7 @@ class Log:
         return list(sorted(set(all_questions)))
 
     @classmethod
-    def from_file(cls, filename, ascending=True):
+    def from_file(cls, filename):
         """Loads a log from a file
 
         Args:
@@ -226,7 +177,14 @@ class Log:
         Returns:
             ``otter.logs.Log``: the ``Log`` instance created from the file
         """
-        return cls(entries=LogEntry.log_from_file(filename, ascending=ascending), ascending=ascending)
+        try:
+            with open(filename, "rb") as f:
+                return pickle.load(f)
+        except FileNotFoundError:
+            return cls([])
+
+    def question_environments(self):
+        return self.shelves.items()
 
     def get_question_entry(self, question):
         if self.ascending:
@@ -251,22 +209,21 @@ class Log:
         """
         return self.get_question_entry(question).get_results()
 
-
-class QuestionLogIterator:
-    def __init__(self, log):
-        log.sort(ascending=False)
-        self.log = log
-        self.questions = self.log.get_questions()
-        self.curr_idx = 0
-    
-    def __iter__(self):
-        return self
-    
-    def __next__(self):
-        if self.curr_idx >= len(self.questions):
-            raise StopIteration
-
-        question = self.questions[self.curr_idx]
-        entry = self.log.get_question_entry(question)
-        self.curr_idx += 1
-        return entry
+    @staticmethod
+    def shelve_environment(env):
+        unshelved = []
+        with shelve.open(_SHELF_FILENAME) as shelf:
+            for k, v in env.items():
+                try:
+                    shelf[k] = v
+                except:
+                    unshelved.append(k)
+        
+        shelf_files = {}
+        for file in glob(_SHELF_FILENAME + "*"):
+            ext = re.sub(_SHELF_FILENAME, "", file)
+            f = open(file, "rb")
+            shelf_files[ext] = f.read()
+            f.close()
+            
+        return shelf_files, unshelved

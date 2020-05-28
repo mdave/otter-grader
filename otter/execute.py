@@ -237,12 +237,12 @@ def execute_log(log, secret='secret', initial_env=None, ignore_errors=False, cwd
         m = mock.mock_open()
         with mock.patch("otter.logs.LogEntry.flush_to_file", m), mock.patch("otter.logs.LogEntry.shelve_environment", m):
             exec(source, global_env)
-            for entry in log.question_iterator():
-                shelf = entry.unshelve()
+            for question in log.get_questions():
+                shelf = log.unshelve_question(question)
                 global_env.update(shelf)
-                script = f"check_results_{secret}.append(grader.check(\"{entry.question}\"))\n"
+                script = f"check_results_{secret}.append(grader.check(\"{question}\"))\n"
                 exec(script, global_env)
-                logged_questions.append(entry.question)
+                logged_questions.append(question)
 
         print("Questions executed from log: {}".format(", ".join(logged_questions)))
         
